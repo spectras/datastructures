@@ -48,6 +48,58 @@ TEST(RBTree, basic_lifecycle)
     EXPECT_THROW(tree.at(0), std::out_of_range);
 }
 
+TEST(RBTree, basic_operations)
+{
+    auto tree = RBTree<int, std::string>({
+        {1, "1"},
+        {2, "2"},
+        {3, "3"},
+        {4, "4"},
+        {5, "5"}
+    });
+    EXPECT_EQ(tree.size(), 5);
+
+    for (int i = 1; i <= 5; ++i) { EXPECT_EQ(tree.at(i), std::to_string(i)); }
+
+    {
+        int i = 1;
+        for (auto & value : tree) {
+            EXPECT_EQ(value.first, i);
+            EXPECT_EQ(value.second, std::to_string(i));
+            i += 1;
+        }
+    }
+
+    for (int i = 1; i <= 5; i += 2) { tree.erase(i); }
+    EXPECT_EQ(tree.size(), 2);
+}
+
+TEST(RBTree, basic_comparator)
+{
+    auto tree = RBTree<int, std::string, std::greater<int>>({
+        {1, "1"},
+        {2, "2"},
+        {3, "3"},
+        {4, "4"},
+        {5, "5"}
+    });
+    EXPECT_EQ(tree.size(), 5);
+
+    for (int i = 1; i <= 5; ++i) { EXPECT_EQ(tree.at(i), std::to_string(i)); }
+
+    {
+        int i = 5;
+        for (auto & value : tree) {
+            EXPECT_EQ(value.first, i);
+            EXPECT_EQ(value.second, std::to_string(i));
+            i -= 1;
+        }
+    }
+
+    for (int i = 1; i <= 5; i += 2) { tree.erase(i); }
+    EXPECT_EQ(tree.size(), 2);
+}
+
 TEST(RBTree, basic_allocator)
 {
     using Tree = RBTree<int, std::string, std::less<int>, testing::counting_allocator<std::string>>;

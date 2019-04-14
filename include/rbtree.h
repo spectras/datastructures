@@ -7,11 +7,15 @@
 #include <limits>
 #include <memory>
 
+
 namespace datastructure {
 
 /****************************************************************************/
 
 namespace detail {
+
+    //************************************************************************
+    // Type-erased node manipulation
 
     enum class Color : uint8_t { Red, Black };
 
@@ -68,6 +72,10 @@ namespace detail {
         }
         return nullptr;
     }
+    inline NodeBase * predecessor(NodeBase * node)
+    {
+        return const_cast<NodeBase *>(predecessor(const_cast<const NodeBase *>(node)));
+    }
 
     /// In-order forwards traversal - return successor, or nullptr if none
     inline const NodeBase * successor(const NodeBase * node)
@@ -79,6 +87,10 @@ namespace detail {
             node = parent;
         }
         return nullptr;
+    }
+    inline NodeBase * successor(NodeBase * node)
+    {
+        return const_cast<NodeBase *>(successor(const_cast<const NodeBase *>(node)));
     }
 
     inline void leftRotate(NodeBase * & root, NodeBase * x)
@@ -141,6 +153,108 @@ namespace detail {
         root->color = Color::Black;
     }
 
+    inline void extractFixup(NodeBase * & root, NodeBase * node)
+    {
+        NodeBase * parent;
+        while (parent = node->parent, node != root && node->color == Color::Black)
+        {
+            if (isLeftChild(node)) {
+                auto * sibling = parent->right;
+                if (sibling->color == Color::Red) {
+                    sibling->color = Color::Black;
+                    parent->color = Color::Red;
+                    leftRotate(root, parent);
+                    sibling = parent->right;
+                }
+                if (sibling->left->color == Color::Black &&
+                    sibling->right->color == Color::Black) {
+                    sibling->color = Color::Red;
+                    node = parent;
+                } else {
+                    if (sibling->right->color == Color::Black) {
+                        sibling->left->color = Color::Black;
+                        sibling->color = Color::Red;
+                        rightRotate(root, sibling);
+                        sibling = parent->right;
+                    }
+                    sibling->color = parent->color;
+                    parent->color = Color::Black;
+                    sibling->right->color = Color::Black;
+                    leftRotate(root, parent);
+                    node = root;
+                }
+            } else {
+                auto * sibling = parent->left;
+                if (sibling->color == Color::Red) {
+                    sibling->color = Color::Black;
+                    parent->color = Color::Red;
+                    rightRotate(root, parent);
+                    sibling = parent->left;
+                }
+                if (sibling->right->color == Color::Black &&
+                    sibling->left->color == Color::Black) {
+                    sibling->color = Color::Red;
+                    node = parent;
+                } else {
+                    if (sibling->left->color == Color::Black) {
+                        sibling->right->color = Color::Black;
+                        sibling->color = Color::Red;
+                        leftRotate(root, sibling);
+                        sibling = parent->left;
+                    }
+                    sibling->color = parent->color;
+                    parent->color = Color::Black;
+                    sibling->left->color = Color::Black;
+                    rightRotate(root, parent);
+                    node = root;
+                }
+            }
+        }
+        node->color = Color::Black;
+    }
+
+    inline void extractNode(NodeBase * & root, NodeBase * node)
+    {
+        detail::NodeBase * replacement = nil;
+        detail::NodeBase * fixupRoot = nullptr;
+
+        if (node->left != nil && node->right != nil) {
+            replacement = allLeft(node->right);
+
+            if (replacement == node->right) { // replacement is immediate right child
+                node->right = replacement->right;
+                node->right->parent = node;
+            } else {                        // replacement is deep
+                replacement->parent->left = replacement->right;
+                replacement->parent->left->parent = replacement->parent;
+            }
+            fixupRoot = replacement->color == Color::Black ? replacement->right : nullptr;
+            replacement->left = node->left;
+            replacement->right = node->right;
+            replacement->left->parent = replacement->right->parent = replacement;
+
+            //fixup if replacement->color black, root=replacement->right
+
+        } else if (node->left != nil) {        // no right child
+            replacement = fixupRoot = node->left;
+            fixupRoot = node->color == Color::Black ? replacement : nullptr;
+        } else if (node->right != nil) {       // no left child
+            replacement = node->right;
+            fixupRoot = node->color == Color::Black ? replacement : nullptr;
+        } else {
+            fixupRoot = node->color == Color::Black ? replacement : nullptr;
+        }
+
+        linkTo(root, node) = replacement;
+        replacement->parent = node->parent;
+        replacement->color = node->color;
+
+        if (fixupRoot) { extractFixup(root, fixupRoot); }
+    }
+
+    //************************************************************************
+    // Full node with data
+
     template <typename K, typename T>
     struct Node final : public NodeBase
     {
@@ -178,6 +292,8 @@ namespace detail {
         return const_cast<N *>(findNode(const_cast<const N *>(root), key, cmp));
     }
 
+    //************************************************************************
+    // Red-black tree data, in its own type for EBO
 
     template <typename K, typename T, typename Compare, typename NodeAllocator>
     struct RBTreeData final : public Compare, public NodeAllocator
@@ -216,27 +332,21 @@ namespace detail {
         IteratorTemplate() = default;
         explicit IteratorTemplate(node_type * node) : m_node(node) {}
         IteratorTemplate(const IteratorTemplate<K, T, Const> &) = default;
-//         template <typename U = T, typename = std::enable_if_t<Const>>
-//         IteratorTemplate(const IteratorTemplate<K, T, false> & other) : m_node(other.m_node) {}
-
         IteratorTemplate & operator=(const IteratorTemplate &) = default;
-//         template <typename U = T>
-//         std::enable_if_t<Const, IteratorTemplate &> operator=(const IteratorTemplate<K, T, false> & rhs)
-//         { m_node = rhs.m_node; }
 
         reference operator*() { return m_node->value; }
         pointer operator->() { return &m_node->value; }
 
         IteratorTemplate & operator++()
         {
-            m_node = const_cast<node_type *>(static_cast<const node_type *>(successor(m_node)));
+            m_node = static_cast<node_type *>(successor(m_node));
             return *this;
         }
         const IteratorTemplate operator++(int) const { return IteratorTemplate(successor(m_node)); }
 
         IteratorTemplate & operator--()
         {
-            m_node = const_cast<node_type *>(predecessor(m_node));
+            m_node = static_cast<node_type *>(predecessor(m_node));
             return *this;
         }
         const IteratorTemplate operator--(int) const { return IteratorTemplate(predecessor(m_node)); }
@@ -247,7 +357,7 @@ namespace detail {
         }
         friend bool operator!=(const IteratorTemplate & lhs, const IteratorTemplate & rhs) { return !(lhs == rhs); }
 
-        node_type * node() const noexcept { return m_node; }
+        node_type * _node() const noexcept { return m_node; }
     private:
         node_type * m_node = nullptr;
     };
@@ -384,18 +494,42 @@ public:
         return node->value.second;
     }
 
+    reference operator[](const K & key)
+    {
+        auto * node = findNode(static_cast<Node *>(m_data.root), key, m_data.comparator());
+        if (key == node->value.first) { return node->value.second; }
+
+        auto * newNode = buildNode(key);
+        newNode->parent = node;
+        if (node == nil) {
+            m_data.root = newNode;
+        } else {
+            if (m_data.comparator()(newNode->value.first, node->value.first)) {
+                node->left = newNode;
+            } else {
+                node->right = newNode;
+            }
+        }
+        insertFixup(m_data.root, newNode);
+        m_size += 1;
+        return newNode->value.second;
+    }
+
     reference operator[](K && key)
     {
         auto * node = findNode(static_cast<Node *>(m_data.root), key, m_data.comparator());
         if (key == node->value.first) { return node->value.second; }
 
-        auto * newNode = buildNode(std::forward<K>(key));
+        auto * newNode = buildNode(std::move(key));
         newNode->parent = node;
         if (node == nil) {
             m_data.root = newNode;
         } else {
-            if (m_data.comparator()(key, node->value.first)) { node->left = newNode; }
-                                                        else { node->right = newNode; }
+            if (m_data.comparator()(newNode->value.first, node->value.first)) {
+                node->left = newNode;
+            } else {
+                node->right = newNode;
+            }
         }
         insertFixup(m_data.root, newNode);
         m_size += 1;
@@ -455,13 +589,28 @@ public:
         }
     }
 
-    void erase(iterator);
-    void erase(const_iterator);
-    void erase(const K &);
+    void erase(iterator it)
+    {
+        this->erase(const_iterator(it._node()));
+    }
+
+    void erase(const_iterator it)
+    {
+        auto * node = const_cast<Node *>(it._node());
+        extractNode(m_data.root, node);
+        destroyNode(node);
+        m_size -= 1;
+    }
+
+    void erase(const K & key)
+    {
+        auto it = this->find(key);
+        if (it != this->end()) { this->erase(it); }
+    }
 
     [[nodiscard]] iterator find(const K & key)
     {
-        return iterator(const_cast<Node *>(const_cast<const RBTree *>(this)->find(key).node()));
+        return iterator(const_cast<Node *>(const_cast<const RBTree *>(this)->find(key)._node()));
     }
 
     [[nodiscard]] const_iterator find(const K & key) const
