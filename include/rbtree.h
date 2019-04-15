@@ -19,31 +19,32 @@ namespace detail {
 
     enum class Color : uint8_t { Red, Black };
 
-    struct NodeBase;
-    extern NodeBase * const nil;
-
     struct NodeBase
     {
-        NodeBase *  parent = nil;
-        NodeBase *  left = nil;
-        NodeBase *  right = nil;
+        NodeBase *  parent = nullptr;
+        NodeBase *  left = nullptr;
+        NodeBase *  right = nullptr;
         Color       color = Color::Red;
     };
-    inline NodeBase nilValue = { nullptr, &nilValue, &nilValue, Color::Black };
-    inline NodeBase * const nil = &nilValue;
+
+    struct TreeBase
+    {
+        NodeBase * nil = nullptr;     // owned
+        NodeBase * root = nullptr;    // owned, except if nil
+    };
 
     inline bool isLeftChild(const NodeBase * node) { return node == node->parent->left; }
     inline bool isRightChild(const NodeBase * node) { return node == node->parent->right; }
-    inline NodeBase * & linkTo(NodeBase * & root, NodeBase * node)
+    inline NodeBase * & linkTo(TreeBase & tree, NodeBase * node)
     {
         if (isLeftChild(node)) { return node->parent->left; }
         if (isRightChild(node)) { return node->parent->right; }
-        return root;
+        return tree.root;
     }
 
     inline const NodeBase * allLeft(const NodeBase * node)
     {
-        while (node->left != nil) { node = node->left; }
+        while (node->left != node->left->left) { node = node->left; }
         return node;
     }
     inline NodeBase * allLeft(NodeBase * node)
@@ -53,7 +54,7 @@ namespace detail {
 
     inline const NodeBase * allRight(const NodeBase * node)
     {
-        while (node->right != nil) { node = node->right; }
+        while (node->right != node->right->right) { node = node->right; }
         return node;
     }
     inline NodeBase * allRight(NodeBase * node)
@@ -62,60 +63,62 @@ namespace detail {
     }
 
     /// In-order backwards traversal - return predecessor, or nullptr if none
-    inline const NodeBase * predecessor(const NodeBase * node)
+    inline const NodeBase * predecessor(const TreeBase & tree, const NodeBase * node)
     {
-        if (node->left != nil) { return allRight(node->left); }
-        while (node != nil) {
+        if (node == tree.nil) { return allRight(tree.root); }
+        if (node->left != tree.nil) { return allRight(node->left); }
+        while (node != tree.nil) {
             const auto * parent = node->parent;
             if (node == parent->right) { return parent; }
             node = parent;
         }
         return nullptr;
     }
-    inline NodeBase * predecessor(NodeBase * node)
+    inline NodeBase * predecessor(const TreeBase & tree, NodeBase * node)
     {
-        return const_cast<NodeBase *>(predecessor(const_cast<const NodeBase *>(node)));
+        return const_cast<NodeBase *>(predecessor(tree, const_cast<const NodeBase *>(node)));
     }
 
     /// In-order forwards traversal - return successor, or nullptr if none
-    inline const NodeBase * successor(const NodeBase * node)
+    inline const NodeBase * successor(const TreeBase & tree, const NodeBase * node)
     {
-        if (node->right != nil) { return allLeft(node->right); }
-        while (node != nil) {
+        if (node == tree.nil) { return allLeft(tree.root); }
+        if (node->right != tree.nil) { return allLeft(node->right); }
+        while (node != tree.nil) {
             const auto * parent = node->parent;
             if (node == parent->left) { return parent; }
             node = parent;
         }
         return nullptr;
     }
-    inline NodeBase * successor(NodeBase * node)
+    inline NodeBase * successor(const TreeBase & tree, NodeBase * node)
     {
-        return const_cast<NodeBase *>(successor(const_cast<const NodeBase *>(node)));
+        return const_cast<NodeBase *>(successor(tree, const_cast<const NodeBase *>(node)));
     }
 
-    inline void leftRotate(NodeBase * & root, NodeBase * x)
+    inline void leftRotate(TreeBase & tree, NodeBase * x)
     {
         auto y = x->right;
         x->right = y->left;
         x->right->parent = x;
         y->left = x;
         y->parent = x->parent;
-        linkTo(root, x) = y;
+        linkTo(tree, x) = y;
         x->parent = y;
     }
 
-    inline void rightRotate(NodeBase * & root, NodeBase * y)
+    inline void rightRotate(TreeBase & tree, NodeBase * y)
     {
         auto x = y->left;
         y->left = x->right;
         y->left->parent = y;
         x->right = y;
         x->parent = y->parent;
-        linkTo(root, y) = x;
+        linkTo(tree, y) = x;
         y->parent = x;
     }
 
-    inline void insertFixup(NodeBase * & root, NodeBase * node)
+    inline void insertFixup(TreeBase & tree, NodeBase * node)
     {
         NodeBase * parent;
         while(parent = node->parent, parent->color == Color::Red) {
@@ -131,39 +134,39 @@ namespace detail {
                 if (isLeftChild(parent)) {
                     if (isRightChild(node)) {
                         node = parent;
-                        leftRotate(root, node);
+                        leftRotate(tree, node);
                         parent = node->parent;
                     }
                     parent->color = Color::Black;
                     parent->parent->color = Color::Red;
-                    rightRotate(root, parent->parent);
+                    rightRotate(tree, parent->parent);
                 } else {
                     if (isLeftChild(node)) {
                         node = parent;
-                        rightRotate(root, node);
+                        rightRotate(tree, node);
                         parent = node->parent;
                     }
                     parent->color = Color::Black;
                     parent->parent->color = Color::Red;
-                    leftRotate(root, parent->parent);
+                    leftRotate(tree, parent->parent);
                 }
                 // break; implied by loop condition
             }
         }
-        root->color = Color::Black;
+        tree.root->color = Color::Black;
     }
 
-    inline void extractFixup(NodeBase * & root, NodeBase * node)
+    inline void extractFixup(TreeBase & tree, NodeBase * node)
     {
         NodeBase * parent;
-        while (parent = node->parent, node != root && node->color == Color::Black)
+        while (parent = node->parent, node != tree.root && node->color == Color::Black)
         {
             if (isLeftChild(node)) {
                 auto * sibling = parent->right;
                 if (sibling->color == Color::Red) {
                     sibling->color = Color::Black;
                     parent->color = Color::Red;
-                    leftRotate(root, parent);
+                    leftRotate(tree, parent);
                     sibling = parent->right;
                 }
                 if (sibling->left->color == Color::Black &&
@@ -174,21 +177,21 @@ namespace detail {
                     if (sibling->right->color == Color::Black) {
                         sibling->left->color = Color::Black;
                         sibling->color = Color::Red;
-                        rightRotate(root, sibling);
+                        rightRotate(tree, sibling);
                         sibling = parent->right;
                     }
                     sibling->color = parent->color;
                     parent->color = Color::Black;
                     sibling->right->color = Color::Black;
-                    leftRotate(root, parent);
-                    node = root;
+                    leftRotate(tree, parent);
+                    node = tree.root;
                 }
             } else {
                 auto * sibling = parent->left;
                 if (sibling->color == Color::Red) {
                     sibling->color = Color::Black;
                     parent->color = Color::Red;
-                    rightRotate(root, parent);
+                    rightRotate(tree, parent);
                     sibling = parent->left;
                 }
                 if (sibling->right->color == Color::Black &&
@@ -199,26 +202,26 @@ namespace detail {
                     if (sibling->left->color == Color::Black) {
                         sibling->right->color = Color::Black;
                         sibling->color = Color::Red;
-                        leftRotate(root, sibling);
+                        leftRotate(tree, sibling);
                         sibling = parent->left;
                     }
                     sibling->color = parent->color;
                     parent->color = Color::Black;
                     sibling->left->color = Color::Black;
-                    rightRotate(root, parent);
-                    node = root;
+                    rightRotate(tree, parent);
+                    node = tree.root;
                 }
             }
         }
         node->color = Color::Black;
     }
 
-    inline void extractNode(NodeBase * & root, NodeBase * node)
+    inline void extractNode(TreeBase & tree, NodeBase * node)
     {
-        detail::NodeBase * replacement = nil;
+        detail::NodeBase * replacement = tree.nil;
         detail::NodeBase * fixupRoot = nullptr;
 
-        if (node->left != nil && node->right != nil) {
+        if (node->left != tree.nil && node->right != tree.nil) {
             replacement = allLeft(node->right);
 
             if (replacement == node->right) { // replacement is immediate right child
@@ -233,23 +236,21 @@ namespace detail {
             replacement->right = node->right;
             replacement->left->parent = replacement->right->parent = replacement;
 
-            //fixup if replacement->color black, root=replacement->right
-
-        } else if (node->left != nil) {        // no right child
+        } else if (node->left != tree.nil) {        // no right child
             replacement = fixupRoot = node->left;
             fixupRoot = node->color == Color::Black ? replacement : nullptr;
-        } else if (node->right != nil) {       // no left child
+        } else if (node->right != tree.nil) {       // no left child
             replacement = node->right;
             fixupRoot = node->color == Color::Black ? replacement : nullptr;
         } else {
             fixupRoot = node->color == Color::Black ? replacement : nullptr;
         }
 
-        linkTo(root, node) = replacement;
+        linkTo(tree, node) = replacement;
         replacement->parent = node->parent;
         replacement->color = node->color;
 
-        if (fixupRoot) { extractFixup(root, fixupRoot); }
+        if (fixupRoot) { extractFixup(tree, fixupRoot); }
     }
 
     //************************************************************************
@@ -268,38 +269,36 @@ namespace detail {
 
     /// Find node of a given key, looking from a given root, returning possible insertion point if not found
     template <typename K, typename T, typename Compare>
-    const Node<K, T> * findNode(const Node<K, T> * root, const K & key, const Compare & cmp)
+    const Node<K, T> * findNode(const TreeBase & tree, const K & key, const Compare & cmp)
     {
         using N = const Node<K, T>;
-        const NodeBase * node = root;
+        const NodeBase * node = tree.root;
         const NodeBase * next = node;
-        while (next != nil) {
+        while (next != tree.nil) {
             node = next;
             if (cmp(key, static_cast<N *>(node)->value.first)) {
                 next = node->left;
             } else if (cmp(static_cast<N *>(node)->value.first, key)) {
                 next = node->right;
             } else {
-                next = nil;
+                next = tree.nil;
             }
         }
         return static_cast<N *>(node);
     }
     template <typename K, typename T, typename Compare>
-    Node<K, T> * findNode(Node<K, T> * root, const K & key, const Compare & cmp)
+    Node<K, T> * findNode(TreeBase & tree, const K & key, const Compare & cmp)
     {
         using N = Node<K, T>;
-        return const_cast<N *>(findNode(const_cast<const N *>(root), key, cmp));
+        return const_cast<N *>(findNode<K, T, Compare>(const_cast<const TreeBase &>(tree), key, cmp));
     }
 
     //************************************************************************
     // Red-black tree data, in its own type for EBO
 
     template <typename K, typename T, typename Compare, typename NodeAllocator>
-    struct RBTreeData final : public Compare, public NodeAllocator
+    struct RBTreeData final : public Compare, public NodeAllocator, public TreeBase
     {
-        NodeBase * root = nil;
-
         RBTreeData() = default;
 
         explicit RBTreeData(const Compare & cmp) : Compare(cmp) {}
@@ -311,6 +310,27 @@ namespace detail {
         RBTreeData(const Compare & cmp, AllocatorU && alloc)
          : Compare(cmp), NodeAllocator(std::forward<AllocatorU>(alloc)) {}
 
+        RBTreeData & operator=(const RBTreeData &) = delete;
+        RBTreeData & operator=(RBTreeData &&) = delete;
+
+        NodeBase * createNil()
+        {
+            auto * storage = std::allocator_traits<NodeAllocator>::allocate(this->allocator(), 1);
+            nil = new (storage) NodeBase;
+            nil->left = nil->right = nil;
+            nil->color = Color::Black;
+            return nil;
+        }
+
+        void destroyNil()
+        {
+            if (nil) {
+                nil->~NodeBase();
+                auto ptr = reinterpret_cast<typename std::allocator_traits<NodeAllocator>::pointer>(nil);
+                std::allocator_traits<NodeAllocator>::deallocate(this->allocator(), ptr, 1);
+            }
+        }
+
         Compare & comparator() noexcept { return *static_cast<Compare *>(this); }
         const Compare & comparator() const noexcept { return *static_cast<const Compare *>(this); }
         NodeAllocator & allocator() noexcept { return *static_cast<NodeAllocator *>(this); }
@@ -321,6 +341,7 @@ namespace detail {
     class IteratorTemplate
     {
     protected:
+        using tree_type = std::conditional_t<Const, const TreeBase, TreeBase>;
         using node_type = std::conditional_t<Const, const Node<K, T>, Node<K, T>>;
     public:
         using iterator_category = std::bidirectional_iterator_tag;
@@ -330,7 +351,7 @@ namespace detail {
         using difference_type = std::ptrdiff_t;
     public:
         IteratorTemplate() = default;
-        explicit IteratorTemplate(node_type * node) : m_node(node) {}
+        explicit IteratorTemplate(tree_type & tree, node_type * node) : m_tree(&tree), m_node(node) {}
         IteratorTemplate(const IteratorTemplate<K, T, Const> &) = default;
         IteratorTemplate & operator=(const IteratorTemplate &) = default;
 
@@ -339,17 +360,17 @@ namespace detail {
 
         IteratorTemplate & operator++()
         {
-            m_node = static_cast<node_type *>(successor(m_node));
+            m_node = static_cast<node_type *>(successor(*m_tree, m_node));
             return *this;
         }
-        const IteratorTemplate operator++(int) const { return IteratorTemplate(successor(m_node)); }
+        const IteratorTemplate operator++(int) const { return IteratorTemplate(successor(*m_tree, m_node)); }
 
         IteratorTemplate & operator--()
         {
-            m_node = static_cast<node_type *>(predecessor(m_node));
+            m_node = static_cast<node_type *>(predecessor(*m_tree, m_node));
             return *this;
         }
-        const IteratorTemplate operator--(int) const { return IteratorTemplate(predecessor(m_node)); }
+        const IteratorTemplate operator--(int) const { return IteratorTemplate(predecessor(*m_tree, m_node)); }
 
         friend bool operator==(const IteratorTemplate & lhs, const IteratorTemplate & rhs)
         {
@@ -357,11 +378,14 @@ namespace detail {
         }
         friend bool operator!=(const IteratorTemplate & lhs, const IteratorTemplate & rhs) { return !(lhs == rhs); }
 
+        tree_type & _tree() const noexcept { return *m_tree; }
         node_type * _node() const noexcept { return m_node; }
     private:
+        tree_type * m_tree = nullptr;
         node_type * m_node = nullptr;
     };
 
+    template <typename Tree> auto nil(const Tree & tree) { return tree.m_data.nil; }
     template <typename Tree> auto root(const Tree & tree) { return tree.m_data.root; }
 }
 
@@ -376,7 +400,6 @@ class RBTree final
     using NodeAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<Node>;
     using NodeAllocatorTraits = std::allocator_traits<NodeAllocator>;
     using Data = detail::RBTreeData<K, T, Compare, NodeAllocator>;
-    static constexpr auto & nil = detail::nil;
 public:
     using key_type = K;
     using mapped_type = T;
@@ -391,26 +414,35 @@ public:
     using const_iterator = detail::IteratorTemplate<K, T, true>;
 
 public:
-    RBTree() = default;
+    RBTree()
+    {
+        m_data.root = m_data.createNil();
+    }
 
     explicit RBTree(const Allocator & alloc)
      : m_data(alloc)
-    {}
+    {
+        m_data.root = m_data.createNil();
+    }
 
     explicit RBTree(const Compare & cmp, const Allocator & alloc = Allocator())
      : m_data(cmp, alloc)
-    {}
+    {
+        m_data.root = m_data.createNil();
+    }
 
     RBTree(const RBTree & other)
      : m_data(other.m_data.comparator(),
               NodeAllocatorTraits::select_on_container_copy_construction(other.m_data.allocator()))
     {
+        m_data.root = m_data.createNil();
         this->insert(other.begin(), other.end());
     }
 
     RBTree(const RBTree & other, const Allocator & alloc)
      : m_data(other.m_data.comparator(), alloc)
     {
+        m_data.root = m_data.createNil();
         this->insert(other.begin(), other.end());
     }
 
@@ -419,6 +451,7 @@ public:
               std::move(other.m_data.allocator()))
     {
         using std::swap;
+        swap(m_data.nil, other.m_data.nil);
         swap(m_data.root, other.m_data.root);
         swap(m_size, other.m_size);
     }
@@ -428,9 +461,11 @@ public:
     {
         using std::swap;
         if (alloc == other.m_data.allocator()) {
+            swap(m_data.nil, other.m_data.nil);
             swap(m_data.root, other.m_data.root);
             swap(m_size, other.m_size);
         } else {
+            m_data.root = m_data.createNil();
             this->insert(std::make_move_iterator(other.begin()),
                          std::make_move_iterator(other.end()));
         }
@@ -441,6 +476,7 @@ public:
            const Compare & comp = Compare(), const Allocator & alloc = Allocator())
      : m_data(comp, alloc)
     {
+        m_data.root = m_data.createNil();
         this->insert(from, to);
     }
 
@@ -448,10 +484,14 @@ public:
            const Compare & comp = Compare(), const Allocator & alloc = Allocator())
      : m_data(comp, alloc)
     {
+        m_data.root = m_data.createNil();
         this->insert(values.begin(), values.end());
     }
 
-    ~RBTree() { this->clear(); }
+    ~RBTree() {
+        if (m_data.root) { this->clear(); }
+        m_data.destroyNil();
+    }
 
     RBTree & operator=(const RBTree & rhs)
     {
@@ -459,7 +499,9 @@ public:
         this->clear();
         m_data.comparator() = rhs.m_data.comparator();
         if constexpr (NodeAllocatorTraits::propagate_on_container_copy_assignment::value) {
+            m_data.destroyNil();
             m_data.allocator() = rhs.m_data.allocator();
+            m_data.root = m_data.createNil();
         }
         this->insert(rhs.begin(), rhs.end());   //TODO bisect-based construction
         return *this;
@@ -474,6 +516,7 @@ public:
         } else {
             assert(m_data.allocator() == rhs.m_data.allocator()); // UB
         }
+        swap(m_data.nil, rhs.m_data.nil);
         swap(m_data.root, rhs.m_data.root);
         swap(m_size, rhs.m_size);
         return *this;
@@ -489,19 +532,19 @@ public:
 
     const_reference at(const K & key) const
     {
-        auto * node = findNode(static_cast<const Node *>(m_data.root), key, m_data.comparator());
-        if (key != node->value.first) { throw std::out_of_range("key does not exist"); }
-        return node->value.second;
+        auto * node = detail::findNode<K, T, Compare>(m_data, key, m_data.comparator());
+        if (node != m_data.nil && key == node->value.first) { return node->value.second; }
+        throw std::out_of_range("key does not exist");
     }
 
     reference operator[](const K & key)
     {
-        auto * node = findNode(static_cast<Node *>(m_data.root), key, m_data.comparator());
-        if (key == node->value.first) { return node->value.second; }
+        auto * node = detail::findNode<K, T, Compare>(m_data, key, m_data.comparator());
+        if (node != m_data.nil && key == node->value.first) { return node->value.second; }
 
         auto * newNode = buildNode(key);
         newNode->parent = node;
-        if (node == nil) {
+        if (node == m_data.nil) {
             m_data.root = newNode;
         } else {
             if (m_data.comparator()(newNode->value.first, node->value.first)) {
@@ -510,19 +553,19 @@ public:
                 node->right = newNode;
             }
         }
-        insertFixup(m_data.root, newNode);
+        insertFixup(m_data, newNode);
         m_size += 1;
         return newNode->value.second;
     }
 
     reference operator[](K && key)
     {
-        auto * node = findNode(static_cast<Node *>(m_data.root), key, m_data.comparator());
-        if (key == node->value.first) { return node->value.second; }
+        auto * node = detail::findNode<K, T, Compare>(m_data, key, m_data.comparator());
+        if (node != m_data.nil && key == node->value.first) { return node->value.second; }
 
         auto * newNode = buildNode(std::move(key));
         newNode->parent = node;
-        if (node == nil) {
+        if (node == m_data.nil) {
             m_data.root = newNode;
         } else {
             if (m_data.comparator()(newNode->value.first, node->value.first)) {
@@ -531,7 +574,7 @@ public:
                 node->right = newNode;
             }
         }
-        insertFixup(m_data.root, newNode);
+        insertFixup(m_data, newNode);
         m_size += 1;
         return newNode->value.second;
     }
@@ -539,8 +582,8 @@ public:
     void clear()
     {
         auto * node = allLeft(m_data.root);
-        while (node != nil) {
-            while (node->right != nil) { node = allLeft(node->right); }
+        while (node != m_data.nil) {
+            while (node->right != m_data.nil) { node = allLeft(node->right); }
 
             detail::NodeBase * leaf;
             do {
@@ -549,7 +592,7 @@ public:
                 destroyNode(static_cast<Node *>(leaf));
             } while (leaf == node->right);
         }
-        m_data.root = nil;
+        m_data.root = m_data.nil;
         m_size = 0;
     }
 
@@ -560,20 +603,22 @@ public:
 
     std::pair<iterator, bool> insert(value_type && value)
     {
-        auto * node = findNode(static_cast<Node *>(m_data.root), value.first, m_data.comparator());
-        if (value.first == node->value.first) { return {iterator(node), false}; }
+        auto * node = detail::findNode<K, T, Compare>(m_data, value.first, m_data.comparator());
+        if (node != m_data.nil && value.first == node->value.first) {
+            return {iterator(m_data, node), false};
+        }
 
         auto * newNode = buildNode(std::forward<value_type>(value));
         newNode->parent = node;
-        if (node == nil) {
+        if (node == m_data.nil) {
             m_data.root = newNode;
         } else {
             if (m_data.comparator()(value.first, node->value.first)) { node->left = newNode; }
                                                                 else { node->right = newNode; }
         }
-        insertFixup(m_data.root, newNode);
+        insertFixup(m_data, newNode);
         m_size += 1;
-        return {iterator(newNode), true};
+        return {iterator(m_data, newNode), true};
     }
 
     void insert(std::initializer_list<value_type> values)
@@ -591,13 +636,16 @@ public:
 
     void erase(iterator it)
     {
-        this->erase(const_iterator(it._node()));
+        auto * node = it._node();
+        extractNode(m_data, node);
+        destroyNode(node);
+        m_size -= 1;
     }
 
     void erase(const_iterator it)
     {
         auto * node = const_cast<Node *>(it._node());
-        extractNode(m_data.root, node);
+        extractNode(m_data, node);
         destroyNode(node);
         m_size -= 1;
     }
@@ -610,25 +658,30 @@ public:
 
     [[nodiscard]] iterator find(const K & key)
     {
-        return iterator(const_cast<Node *>(const_cast<const RBTree *>(this)->find(key)._node()));
+        auto it = const_cast<const RBTree *>(this)->find(key);
+        return iterator(const_cast<detail::TreeBase &>(it._tree()), const_cast<Node *>(it._node()));
     }
 
     [[nodiscard]] const_iterator find(const K & key) const
     {
-        if (m_data.root == nil) { return const_iterator(); }
-        auto * node = findNode(static_cast<const Node *>(m_data.root), key, m_data.comparator());
-        if (key != node->value.first) { return const_iterator(); }
-        return const_iterator(node);
+        if (m_data.root == m_data.nil) { return const_iterator(); }
+        auto * node = detail::findNode<K, T, Compare>(m_data, key, m_data.comparator());
+        if (node == m_data.nil || key != node->value.first) { return const_iterator(m_data, nullptr); }
+        return const_iterator(m_data, node);
     }
 
     [[nodiscard]] iterator begin() {
-        return iterator(static_cast<Node *>(const_cast<detail::NodeBase*>(allLeft(m_data.root))));
+        return iterator(m_data, static_cast<Node *>(allLeft(m_data.root)));
     }
-    [[nodiscard]] const_iterator begin() const { return const_iterator(static_cast<const Node *>(allLeft(m_data.root))); }
-    [[nodiscard]] const_iterator cbegin() const { return const_iterator(static_cast<const Node *>(allLeft(m_data.root))); }
-    [[nodiscard]] iterator end() { return iterator(); }
-    [[nodiscard]] const_iterator end() const { return const_iterator(); }
-    [[nodiscard]] const_iterator cend() const { return const_iterator(); }
+    [[nodiscard]] const_iterator begin() const {
+        return const_iterator(m_data, static_cast<const Node *>(allLeft(m_data.root)));
+    }
+    [[nodiscard]] const_iterator cbegin() const {
+        return const_iterator(m_data, static_cast<const Node *>(allLeft(m_data.root)));
+    }
+    [[nodiscard]] iterator end() { return iterator(m_data, nullptr); }
+    [[nodiscard]] const_iterator end() const { return const_iterator(m_data, nullptr); }
+    [[nodiscard]] const_iterator cend() const { return const_iterator(m_data, nullptr); }
 
     void swap(RBTree & rhs) noexcept
     {
@@ -639,6 +692,7 @@ public:
             assert(m_data.allocator() == rhs.m_data.allocator());
         }
         swap(m_data.comparator(), rhs.m_data.comparator());
+        swap(m_data.nil, rhs.m_data.nil);
         swap(m_data.root, rhs.m_data.root);
         swap(m_size, rhs.m_size);
     }
@@ -671,14 +725,16 @@ private:
     template <typename ... Args>
     Node * buildNode(Args && ... args)
     {
-        auto storage = NodeAllocatorTraits::allocate(m_data.allocator(), 1);
+        Node * node;
+        auto * storage = NodeAllocatorTraits::allocate(m_data.allocator(), 1);
         try {
-            return new (storage) Node(std::forward<Args>(args)...);
+            node = new (storage) Node(std::forward<Args>(args)...);
         } catch (...) {
             NodeAllocatorTraits::deallocate(m_data.allocator(), storage, 1);
             throw;
         }
-        // never reached
+        node->left = node->right = m_data.nil;
+        return node;
     }
 
     void destroyNode(Node * node)

@@ -112,16 +112,16 @@ TEST(RBTree, basic_allocator)
         tree[4] = "hello4";
         tree[1] = "replaced";
         EXPECT_EQ(tree.size(), 4);
-        EXPECT_EQ(allocations, 4);
+        EXPECT_EQ(allocations, 5);
 
         auto treeB = tree;              // propagate on copy construction
         EXPECT_EQ(tree, treeB);
-        EXPECT_EQ(allocations, 8);
+        EXPECT_EQ(allocations, 10);
 
         auto treeC = std::move(tree);   // propagate on move construction
         EXPECT_EQ(tree.size(), 0);
         EXPECT_EQ(treeB, treeC);
-        EXPECT_EQ(allocations, 8);
+        EXPECT_EQ(allocations, 10);
     }
-    EXPECT_EQ(deallocations, 8);
+    EXPECT_EQ(deallocations, 10);
 }
