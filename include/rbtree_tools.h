@@ -1,5 +1,7 @@
-#ifndef RBTREE_TOOLS_H
-#define RBTREE_TOOLS_H
+/* Copyright 2019 Julien Hartmann
+ */
+#ifndef DATASTRUCTURES_RBTREE_TOOLS_H
+#define DATASTRUCTURES_RBTREE_TOOLS_H
 
 #include <ostream>
 #include <queue>

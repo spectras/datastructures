@@ -1,3 +1,5 @@
+/* Copyright 2019 Julien Hartmann
+ */
 #ifndef DATASTRUCTURES_TESTS_ALLOCATORS_H
 #define DATASTRUCTURES_TESTS_ALLOCATORS_H
 

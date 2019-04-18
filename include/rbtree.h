@@ -1,5 +1,7 @@
-#ifndef RBTREE_H
-#define RBTREE_H
+/* Copyright 2019 Julien Hartmann
+ */
+#ifndef DATASTRUCTURES_RBTREE_H
+#define DATASTRUCTURES_RBTREE_H
 
 #include <cassert>
 #include <functional>

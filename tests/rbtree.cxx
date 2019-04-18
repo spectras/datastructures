@@ -1,3 +1,5 @@
+/* Copyright 2019 Julien Hartmann
+ */
 #include "rbtree.h"
 
 #include "allocators.h"
